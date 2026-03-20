@@ -1,0 +1,25 @@
+version: 1.1
+kind: component
+name: notebook
+tags: [notebook, pytorch]
+
+run:
+  kind: service
+  connections: [default-artifacts-store]
+  ports:
+    - 8888
+  container:
+    image: pytorch/pytorch:latest
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+    command: ["bash", "-c"]
+    args:
+      - |
+        pip install -q jupyter notebook && jupyter notebook \
+          --no-browser --ip=0.0.0.0 --port={{globals.ports[0]}} \
+          --allow-root --NotebookApp.allow_origin='*' \
+          --NotebookApp.trust_xheaders=True --NotebookApp.token='' \
+          --NotebookApp.base_url={{globals.base_url}} \
+          --notebook-dir=/artifacts/{{globals.uuid}}
+    workingDir: "/artifacts/{{ globals.uuid }}"

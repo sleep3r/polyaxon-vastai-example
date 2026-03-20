@@ -1,0 +1,12 @@
+version: 1.1
+kind: component
+name: mnist-training
+tags: [examples, pytorch]
+
+run:
+  kind: job
+  connections: [default-artifacts-store]
+  container:
+    image: pytorch/pytorch:latest
+    workingDir: "/artifacts/{{ globals.uuid }}/uploads"
+    command: ["python", "-u", "mnist_train.py"]

@@ -1,0 +1,15 @@
+.env
+.env.example
+.git
+.gitignore
+.venv
+.python-version
+__pycache__
+*.pyc
+uv.lock
+pyproject.toml
+HELP_PROMPT.md
+README.md
+vastai_template.sh
+.polyaxonignore
+Makefile
