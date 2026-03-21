@@ -10,8 +10,8 @@ apt-get update -qq && apt-get install -y -qq socat
 # Configure nvidia runtime for k3s containerd (BEFORE k3s start)
 mkdir -p /var/lib/rancher/k3s/agent/etc/containerd
 cat > /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl << 'NVEOF'
-[plugins."io.containerd.grpc.v1.cri".containerd]
-  default_runtime_name = "nvidia"
+{{ template "base" . }}
+
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
   privileged_without_host_devices = false
   runtime_type = "io.containerd.runc.v2"
