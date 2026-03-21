@@ -13,5 +13,8 @@
 #   OPEN_BUTTON_PORT   = 1111
 #   PORTAL_CONFIG      = localhost:1111:11111:/:Instance Portal|localhost:6100:16100:/:Selkies Low Latency Desktop|localhost:6200:16200:/:Apache Guacamole Desktop (VNC)|localhost:8000:18000:/:Polyaxon
 #
-# On-start Script (одна строка):
+# On-start Script (3 строки, ОБЯЗАТЕЛЬНО с shebang — KVM использует cloud-init!):
+#
+#   #!/bin/bash
+#   source /etc/environment
 #   curl -sL https://raw.githubusercontent.com/sleep3r/polyaxon-vastai-example/main/setup.sh | bash

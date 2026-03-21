@@ -1,15 +1,52 @@
+# Проблема: On-start Script НЕ запускается на Vast.ai KVM инстансах
+
+## Контекст
+
+Я разворачиваю Polyaxon CE (ML training platform) на Vast.ai KVM инстансах. Создал шаблон с on-start скриптом, но при создании нового инстанса скрипт **не запускается автоматически**.
+
+## Что я делаю
+
+1. В UI Vast.ai → Templates → On-start Script вставляю:
+```
+curl -sL https://raw.githubusercontent.com/sleep3r/polyaxon-vastai-example/main/setup.sh | bash
+```
+
+2. Создаю инстанс из этого шаблона
+
+3. SSH на инстанс → `cat /var/log/polyaxon.log` → **файла нет**, скрипт не запускался
+
+4. Если запустить вручную — всё работает
+
+## Параметры шаблона
+
+- **VM Image:** `docker.io/vastai/kvm:ubuntu_desktop_22.04-2025-11-21` (KVM, не Docker!)
+- **Launch Mode:** Interactive shell server, SSH (Direct SSH ✓)
+- **Disk:** 100 GB
+- **Ports:** 1111, 3478/udp, 5900, 6100, 6200, 741641/udp, 8000
+
+### Environment Variables
+```
+OPEN_BUTTON_TOKEN  = 1
+OPEN_BUTTON_PORT   = 1111
+PORTAL_CONFIG      = localhost:1111:11111:/:Instance Portal|localhost:6100:16100:/:Selkies Low Latency Desktop|localhost:6200:16200:/:Apache Guacamole Desktop (VNC)|localhost:8000:18000:/:Polyaxon
+```
+
+## Логи инстанса (instance logs)
+
+При создании нового инстанса (Instance 33294215, RTX 3090) в логах видно:
+- docker, cloud-init, KDE desktop запускаются нормально
+- `cloud-final.service: Failed with result 'exit-code'` (но это может быть не связано)
+- Никаких следов нашего setup.sh
+- nvidia-smi работает, GPU видна (RTX 3090)
+
+## Полный setup.sh
+
+```bash
 #!/bin/bash
 # Polyaxon CE on k3s — on-start script for Vast.ai KVM instances
-# Fetched via: curl -sL https://raw.githubusercontent.com/sleep3r/polyaxon-vastai-example/main/setup.sh | bash
 exec &>/var/log/polyaxon.log
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml'>>/root/.bashrc
-
-# Wait for unattended-upgrades to finish (first boot race condition)
-while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
-  echo "Waiting for apt lock..."
-  sleep 5
-done
 
 apt-get update -qq && apt-get install -y -qq socat
 
@@ -118,3 +155,18 @@ EOF
 systemctl daemon-reload && systemctl enable --now polyaxon-fwd
 
 echo "Polyaxon ready — GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'none')"
+```
+
+## Вопросы
+
+1. **Как правильно запускать on-start скрипты на Vast.ai KVM инстансах?** (не Docker — именно KVM!) Может быть on-start работает только для Docker-инстансов?
+
+2. **Есть ли альтернативный способ автоматически выполнить скрипт при старте KVM VM?** Например через cloud-init, systemd, cron @reboot или другой механизм?
+
+3. **Может ли проблема быть в том что on-start не сохраняется в шаблоне?** При создании инстанса из шаблона on-start поле видно в UI, но скрипт не исполняется.
+
+4. **Есть ли Vast.ai API/CLI (vastai CLI) команда для программного создания инстанса с on-start скриптом?** Например `vastai create instance --onstart "curl ... | bash"` — это может быть надёжнее чем UI.
+
+## Что нужно
+
+Рабочий способ запустить `setup.sh` **автоматически** при создании нового Vast.ai KVM инстанса, без ручного SSH и запуска.
