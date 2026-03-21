@@ -1,58 +1,29 @@
-# Проблема: On-start Script НЕ запускается на Vast.ai KVM инстансах
+# containerd крашится при старте k3s на Vast.ai KVM
 
 ## Контекст
 
-Я разворачиваю Polyaxon CE (ML training platform) на Vast.ai KVM инстансах. Создал шаблон с on-start скриптом, но при создании нового инстанса скрипт **не запускается автоматически**.
+Разворачиваю Polyaxon CE на Vast.ai KVM инстансе (RTX 4070 Ti SUPER). Скрипт setup.sh запускается через cloud-init on-start, устанавливает k3s + helm + polyaxon.
 
-## Что я делаю
+**Проблема:** k3s крашится в цикле — containerd падает с `exit status 1`.
 
-1. В UI Vast.ai → Templates → On-start Script вставляю:
+## Критичные строки из логов
+
 ```
-curl -sL https://raw.githubusercontent.com/sleep3r/polyaxon-vastai-example/main/setup.sh | bash
-```
-
-2. Создаю инстанс из этого шаблона
-
-3. SSH на инстанс → `cat /var/log/polyaxon.log` → **файла нет**, скрипт не запускался
-
-4. Если запустить вручную — всё работает
-
-## Параметры шаблона
-
-- **VM Image:** `docker.io/vastai/kvm:ubuntu_desktop_22.04-2025-11-21` (KVM, не Docker!)
-- **Launch Mode:** Interactive shell server, SSH (Direct SSH ✓)
-- **Disk:** 100 GB
-- **Ports:** 1111, 3478/udp, 5900, 6100, 6200, 741641/udp, 8000
-
-### Environment Variables
-```
-OPEN_BUTTON_TOKEN  = 1
-OPEN_BUTTON_PORT   = 1111
-PORTAL_CONFIG      = localhost:1111:11111:/:Instance Portal|localhost:6100:16100:/:Selkies Low Latency Desktop|localhost:6200:16200:/:Apache Guacamole Desktop (VNC)|localhost:8000:18000:/:Polyaxon
+level=info msg="Found nvidia container runtime at /usr/bin/nvidia-container-runtime"
+level=info msg="Using containerd config template at /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl"
+level=info msg="Running containerd -c /var/lib/rancher/k3s/agent/etc/containerd/config.toml ..."
+level=error msg="Sending HTTP/1.1 503 response to 127.0.0.1:...: runtime core not ready"
+level=error msg="Shutdown request received: containerd exited: exit status 1"
+systemd[1]: k3s.service: Failed with result 'protocol'.
 ```
 
-## Логи инстанса (instance logs)
+k3s перезапускается каждые ~8 сек, счётчик рестартов: 10, 11, 12, 13...
 
-При создании нового инстанса (Instance 33294215, RTX 3090) в логах видно:
-- docker, cloud-init, KDE desktop запускаются нормально
-- `cloud-final.service: Failed with result 'exit-code'` (но это может быть не связано)
-- Никаких следов нашего setup.sh
-- nvidia-smi работает, GPU видна (RTX 3090)
+## Что именно мы сделали
 
-## Полный setup.sh
+Изначально мы создавали файл `/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl` с содержимым:
 
-```bash
-#!/bin/bash
-# Polyaxon CE on k3s — on-start script for Vast.ai KVM instances
-exec &>/var/log/polyaxon.log
-export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml'>>/root/.bashrc
-
-apt-get update -qq && apt-get install -y -qq socat
-
-# Configure nvidia runtime for k3s containerd (BEFORE k3s start)
-mkdir -p /var/lib/rancher/k3s/agent/etc/containerd
-cat > /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl << 'NVEOF'
+```toml
 {{ template "base" . }}
 
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
@@ -60,7 +31,33 @@ cat > /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl << 'NVEOF'
   runtime_type = "io.containerd.runc.v2"
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
   BinaryName = "/usr/bin/nvidia-container-runtime"
-NVEOF
+```
+
+Этот файл ломал containerd (exit status 1).
+
+## Что мы уже знаем
+
+1. k3s v1.34.5 — **сам определяет** nvidia runtime: `Found nvidia container runtime at /usr/bin/nvidia-container-runtime`
+2. Значит наш `config.toml.tmpl` НЕ НУЖЕН — k3s автоматически настроит nvidia
+3. Мы уже удалили создание этого файла из setup.sh и запушили в GitHub
+
+## Текущий setup.sh (после фикса)
+
+```bash
+#!/bin/bash
+exec &>/var/log/polyaxon.log
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml'>>/root/.bashrc
+
+# Wait for unattended-upgrades to finish (first boot race condition)
+while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+  echo "Waiting for apt lock..."
+  sleep 5
+done
+
+apt-get update -qq && apt-get install -y -qq socat
+
+# k3s v1.34+ auto-detects nvidia-container-runtime, no config needed
 
 # Install k3s (skip if already installed)
 command -v k3s || {
@@ -83,7 +80,6 @@ if ! kubectl get ns polyaxon &>/dev/null; then
   kubectl create ns polyaxon
   helm repo add polyaxon https://charts.polyaxon.com && helm repo update
 
-  # PV/PVC for artifacts store
   cat > /tmp/pv.yaml << EOF
 apiVersion: v1
 kind: PersistentVolume
@@ -112,7 +108,6 @@ spec:
 EOF
   kubectl apply -f /tmp/pv.yaml
 
-  # Helm values — perCore:false prevents OOM on many-core machines
   cat > /tmp/vals.yaml << EOF
 limitResources: false
 api:
@@ -140,7 +135,6 @@ EOF
   helm install polyaxon polyaxon/polyaxon -n polyaxon -f /tmp/vals.yaml --wait --timeout 300s
 fi
 
-# Port forward: socat maps host:18000 -> gateway:80
 GW=$(kubectl get svc -n polyaxon polyaxon-polyaxon-gateway -o jsonpath='{.spec.clusterIP}')
 cat > /etc/systemd/system/polyaxon-fwd.service << EOF
 [Unit]
@@ -159,14 +153,25 @@ echo "Polyaxon ready — GPU: $(nvidia-smi --query-gpu=name --format=csv,noheade
 
 ## Вопросы
 
-1. **Как правильно запускать on-start скрипты на Vast.ai KVM инстансах?** (не Docker — именно KVM!) Может быть on-start работает только для Docker-инстансов?
+1. **Правильно ли наше решение?** Удалить `config.toml.tmpl` и доверить k3s v1.34 автоопределение nvidia runtime — это корректный подход?
 
-2. **Есть ли альтернативный способ автоматически выполнить скрипт при старте KVM VM?** Например через cloud-init, systemd, cron @reboot или другой механизм?
+2. **Что именно ломалось?** Почему `{{ template "base" . }}` + nvidia runtime секция вызывала `containerd exited: exit status 1`? Это проблема синтаксиса Go-шаблона, несовместимость с containerd 2.x, или что-то другое?
 
-3. **Может ли проблема быть в том что on-start не сохраняется в шаблоне?** При создании инстанса из шаблона on-start поле видно в UI, но скрипт не исполняется.
+3. **На текущем инстансе** (где уже есть сломанный `config.toml.tmpl`) — достаточно ли просто удалить файл и перезапустить k3s? Или нужно ещё что-то?
 
-4. **Есть ли Vast.ai API/CLI (vastai CLI) команда для программного создания инстанса с on-start скриптом?** Например `vastai create instance --onstart "curl ... | bash"` — это может быть надёжнее чем UI.
+```bash
+rm -f /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
+systemctl restart k3s
+```
 
-## Что нужно
+4. **GPU в k8s подах.** k3s v1.34 автоматически обнаруживает nvidia runtime. Но будет ли GPU доступна внутри k8s подов? Нужен ли отдельно NVIDIA device plugin (`nvidia-device-plugin.yml`) для того чтобы `nvidia.com/gpu` ресурс появился в node capacity?
 
-Рабочий способ запустить `setup.sh` **автоматически** при создании нового Vast.ai KVM инстанса, без ручного SSH и запуска.
+5. **Есть ли необходимость делать nvidia runtime дефолтным** (через `--default-runtime=nvidia` или `default_runtime_name = "nvidia"` в containerd config)? Или достаточно указать `nvidia.com/gpu: 1` в ресурсах пода и k8s сам использует nvidia runtime?
+
+## Среда
+
+- Vast.ai KVM instance
+- Ubuntu 22.04
+- NVIDIA GeForce RTX 4070 Ti SUPER
+- k3s v1.34.5+k3s1
+- nvidia-container-runtime уже установлен на хосте
