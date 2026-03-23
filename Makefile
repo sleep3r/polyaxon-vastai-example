@@ -4,7 +4,7 @@ PROJECT=mnist-test
 include .env
 export
 
-.PHONY: help check init run run-fast run-full logs status dashboard notebook
+.PHONY: help check init run run-fast run-full sweep logs status dashboard notebook
 
 help:
 	@echo "Доступные команды:"
@@ -13,6 +13,7 @@ help:
 	@echo "  make run        - Запуск обучения (5 эпох, дефолт)"
 	@echo "  make run-fast   - Быстрый тест (2 эпохи)"
 	@echo "  make run-full   - Полное обучение (15 эпох)"
+	@echo "  make sweep      - Подбор гиперпараметров (12 экспериментов)"
 	@echo "  make logs       - Просмотр логов"
 	@echo "  make status     - Статус запусков"
 	@echo "  make dashboard  - Открыть веб-интерфейс"
@@ -35,6 +36,9 @@ run-fast:
 run-full:
 	uv run polyaxon run -f infra/polyaxonfile.yaml -u -p $(PROJECT) -P epochs=15 -P lr=0.0005
 
+sweep:
+	uv run polyaxon run -f infra/sweep.yaml -u -p $(PROJECT)
+
 logs:
 	uv run polyaxon ops logs -p $(PROJECT)
 
@@ -46,3 +50,4 @@ dashboard:
 
 notebook:
 	uv run polyaxon run -f infra/notebook.yaml -p $(PROJECT)
+
