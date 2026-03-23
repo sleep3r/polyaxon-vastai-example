@@ -1,7 +1,7 @@
 """MNIST Training with Polyaxon Experiment Tracking.
 
 Features:
-  - YAML config (config.yaml) with CLI overrides
+  - YAML config (configs/experiment.yaml) with CLI overrides
   - Polyaxon tracking: inputs, metrics, model, confusion matrix
   - Test evaluation every epoch
   - Best model checkpoint saving
