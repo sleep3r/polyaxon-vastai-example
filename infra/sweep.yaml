@@ -47,11 +47,13 @@ component:
       resources:
         limits:
           nvidia.com/gpu: 1
-      workingDir: "/artifacts/{{ globals.uuid }}/uploads"
       command: ["bash", "-c"]
       args:
         - >
           pip install -q pyyaml polyaxon &&
+          apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1 &&
+          git clone --depth 1 https://github.com/sleep3r/polyaxon-vastai-example.git /workspace &&
+          cd /workspace &&
           python -u train.py
           --epochs={{ epochs }}
           --lr={{ lr }}
