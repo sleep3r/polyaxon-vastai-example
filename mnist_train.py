@@ -22,7 +22,7 @@ from torchvision import datasets, transforms
 # Config
 # ---------------------------------------------------------------------------
 
-def load_config(config_path: str = "config.yaml") -> dict:
+def load_config(config_path: str = "configs/experiment.yaml") -> dict:
     """Load YAML config, return flat dict for easy override."""
     try:
         import yaml

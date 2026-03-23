@@ -1,102 +1,147 @@
 # 🚀 Polyaxon CE on Vast.ai
 
-Run ML training jobs and Jupyter notebooks on cheap GPU instances using [Polyaxon CE](https://polyaxon.com/) + [Vast.ai](https://vast.ai/).
+Run ML experiments on cheap GPU instances with full tracking, model versioning, and notebooks — powered by [Polyaxon CE](https://polyaxon.com/) + [Vast.ai](https://vast.ai/).
 
-> One-click setup: k3s → Polyaxon → GPU-enabled training — all automated.
+> One-click setup: k3s → Polyaxon → GPU training — all automated via a public Vast.ai template.
 
 ## Quick Start
 
 ### 1. Create a Vast.ai Instance
 
-Use the KVM template with this **on-start script**:
+Search for the public template **`Polyaxon CE Training Server`** on [Vast.ai Templates](https://cloud.vast.ai/templates/), or create a KVM instance manually with this **on-start script** (3 строки):
 
 ```bash
-curl -sL https://raw.githubusercontent.com/sleep3r/polyaxon-vastai-example/main/setup.sh | bash
+#!/bin/bash
+source /etc/environment
+curl -sL https://raw.githubusercontent.com/sleep3r/polyaxon-vastai-example/main/infra/setup.sh | bash
 ```
 
-| Parameter | Value |
-|-----------|-------|
-| **Image** | `docker.io/vastai/kvm:ubuntu_desktop_22.04-2025-11-21` |
-| **Disk** | 100 GB |
-| **Ports** | `1111, 8000` |
-
 <details>
-<summary>📋 Full template settings</summary>
+<summary>📋 Manual template settings</summary>
 
 | Field | Value |
 |-------|-------|
+| **Image** | `docker.io/vastai/kvm:ubuntu_desktop_22.04-2025-11-21` |
+| **Disk** | 100 GB |
+| **Ports** | `1111, 3478/udp, 5900, 6100, 6200, 8000` |
 | OPEN_BUTTON_TOKEN | `1` |
 | OPEN_BUTTON_PORT | `1111` |
 | PORTAL_CONFIG | `localhost:1111:11111:/:Portal\|localhost:8000:18000:/:Polyaxon` |
 
+> ⚠️ On-start script **must** start with `#!/bin/bash` — KVM instances use cloud-init, not Docker.
+
 </details>
+
+Wait ~5 min for setup to finish. Check progress: `tail -f /var/log/polyaxon.log`
 
 ### 2. Configure Local CLI
 
 ```bash
-# Install dependencies
-uv sync
-
-# Copy and edit .env
-cp .env.example .env
-# Set POLYAXON_HOST to your Cloudflare tunnel URL or instance IP
+uv sync                     # Install dependencies
+cp .env.example .env        # Copy env template
+# Edit .env → set POLYAXON_HOST and token
 ```
 
-### 3. Run Training
+### 3. Run Experiments
 
 ```bash
-make run        # Upload code + launch training job
-make logs       # Stream logs
-make status     # List all runs
+make init                   # Create project on server
+make run                    # Train (5 epochs, default config)
+make run-fast               # Quick test (2 epochs)
+make run-full               # Full training (15 epochs, lower lr)
+make logs                   # Stream logs
 ```
 
 ### 4. Launch Jupyter Notebook
 
 ```bash
-make notebook   # Start GPU-enabled Jupyter notebook
+make notebook               # GPU-enabled Jupyter in Polyaxon
 ```
+
+---
 
 ## Project Structure
 
 ```
-├── setup.sh            # Vast.ai on-start: k3s + Polyaxon + GPU
-├── vastai_template.sh  # Template documentation
-├── polyaxonfile.yaml   # Training job definition
-├── notebook.yaml       # Jupyter notebook definition
-├── mnist_train.py      # Example training script (MNIST)
-├── Makefile             # CLI shortcuts
-├── .env.example        # Environment template
-└── .polyaxonignore      # Upload exclusions
+├── mnist_train.py              # Training script with Polyaxon tracking
+│
+├── configs/
+│   ├── experiment.yaml         # Hyperparameters (model, training, data)
+│   ├── polyaxonfile.yaml       # Job definition (image, GPU, inputs)
+│   └── notebook.yaml           # Jupyter notebook service
+│
+├── infra/
+│   └── setup.sh                # Vast.ai on-start: k3s + Polyaxon + GPU
+│
+├── Makefile                    # CLI shortcuts
+├── .env.example                # Environment template
+├── .polyaxonignore             # Upload exclusions
+└── pyproject.toml              # Python dependencies
 ```
 
-## How It Works
+## Experiment Tracking
+
+The training script (`mnist_train.py`) integrates with Polyaxon's tracking API:
+
+| Feature | API | What it does |
+|---------|-----|-------------|
+| **Hyperparams** | `log_inputs()` | All config values visible in UI |
+| **Metrics** | `log_metrics(step=)` | Loss/accuracy curves with step axis |
+| **Model** | `log_model()` | Best checkpoint versioned in artifacts |
+| **Confusion matrix** | `log_confusion_matrix()` | Visual matrix in UI |
+| **Progress** | `log_progress()` | Progress bar in Polyaxon dashboard |
+| **Outputs** | `log_outputs()` | Final summary (best accuracy, epoch) |
+
+### Config Override Chain
+
+```
+configs/experiment.yaml  →  polyaxonfile inputs  →  CLI args
+     (defaults)              (make run -P)         (--epochs=10)
+```
+
+Examples:
+```bash
+make run                                    # Use experiment.yaml defaults
+make run-fast                               # Override: epochs=2
+make run-full                               # Override: epochs=15, lr=0.0005
+uv run polyaxon run -f configs/polyaxonfile.yaml -u -P epochs=10 -P lr=0.0003 -P hidden_size=256
+```
+
+## Architecture
 
 ```
 Local Machine                    Vast.ai KVM Instance
-┌─────────────┐    Cloudflare    ┌──────────────────────┐
-│ polyaxon CLI │───── tunnel ────▶│ Caddy → socat:18000  │
-│ make run -u  │    (HTTPS)      │   ↓                  │
-└─────────────┘                  │ k3s + Polyaxon CE     │
-                                 │   ↓                  │
-                                 │ Job Pod (GPU) 🔥     │
-                                 │   pytorch/pytorch     │
-                                 └──────────────────────┘
+┌─────────────┐    Cloudflare    ┌──────────────────────────┐
+│ polyaxon CLI │───── tunnel ────▶│ socat:18000 → Gateway    │
+│ make run -u  │    (HTTPS)      │   ↓                      │
+└─────────────┘                  │ k3s (Kubernetes)          │
+                                 │   ├─ Polyaxon CE          │
+                                 │   ├─ NVIDIA device plugin │
+                                 │   └─ Job Pod (GPU) 🔥     │
+                                 │       pytorch/pytorch      │
+                                 └──────────────────────────┘
 ```
 
 ## Key Design Decisions
 
-- **`perCore: false`** — Prevents Polyaxon from spawning workers per CPU core (crucial for 64+ core machines)
-- **`limitResources: false`** — Disables hardcoded 8GB memory limits from the Helm chart
-- **nvidia runtime** — Configured before k3s start so containerd can pass GPUs to pods
-- **socat port-forward** — Persistent systemd service instead of flaky `kubectl port-forward`
+| Decision | Why |
+|----------|-----|
+| `perCore: false` | Prevents OOM from spawning workers per CPU core on 64+ core machines |
+| `limitResources: false` | Disables hardcoded 8GB memory limits from the Helm chart |
+| `--default-runtime=nvidia` | All pods automatically get GPU access without `runtimeClassName` |
+| `socat` port-forward | Persistent systemd service instead of flaky `kubectl port-forward` |
+| `#!/bin/bash` in on-start | KVM cloud-init requires shebang (unlike Docker containers) |
+| apt lock wait | Handles `unattended-upgrades` race condition on first boot |
 
-## Commands
+## Commands Reference
 
 | Command | Description |
 |---------|-------------|
 | `make check` | Verify connection to Polyaxon server |
 | `make init` | Create project on server |
-| `make run` | Upload code & launch training |
+| `make run` | Upload code & launch training (5 epochs) |
+| `make run-fast` | Quick test run (2 epochs) |
+| `make run-full` | Full training (15 epochs, lr=0.0005) |
 | `make notebook` | Start Jupyter notebook with GPU |
 | `make logs` | Stream run logs |
 | `make status` | List runs |

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Polyaxon CE on k3s — on-start script for Vast.ai KVM instances
-# Fetched via: curl -sL https://raw.githubusercontent.com/sleep3r/polyaxon-vastai-example/main/setup.sh | bash
+# Fetched via: curl -sL https://raw.githubusercontent.com/sleep3r/polyaxon-vastai-example/main/infra/setup.sh | bash
 exec &>/var/log/polyaxon.log
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml'>>/root/.bashrc
