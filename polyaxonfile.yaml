@@ -1,12 +1,46 @@
 version: 1.1
 kind: component
 name: mnist-training
-tags: [examples, pytorch]
+tags: [mnist, pytorch, gpu]
+
+inputs:
+  - name: epochs
+    type: int
+    isOptional: true
+    value: 5
+  - name: lr
+    type: float
+    isOptional: true
+    value: 0.001
+  - name: batch_size
+    type: int
+    isOptional: true
+    value: 64
+  - name: hidden_size
+    type: int
+    isOptional: true
+    value: 128
+  - name: dropout
+    type: float
+    isOptional: true
+    value: 0.2
 
 run:
   kind: job
   connections: [default-artifacts-store]
   container:
     image: pytorch/pytorch:latest
+    resources:
+      limits:
+        nvidia.com/gpu: 1
     workingDir: "/artifacts/{{ globals.uuid }}/uploads"
-    command: ["python", "-u", "mnist_train.py"]
+    command: ["bash", "-c"]
+    args:
+      - >
+        pip install -q pyyaml polyaxon &&
+        python -u mnist_train.py
+        --epochs={{ epochs }}
+        --lr={{ lr }}
+        --batch_size={{ batch_size }}
+        --hidden_size={{ hidden_size }}
+        --dropout={{ dropout }}
