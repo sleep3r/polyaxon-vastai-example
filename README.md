@@ -63,7 +63,7 @@ make notebook               # GPU-enabled Jupyter in Polyaxon
 ## Project Structure
 
 ```
-├── mnist_train.py              # Training script with Polyaxon tracking
+├── train.py              # Training script with Polyaxon tracking
 │
 ├── configs/
 │   └── experiment.yaml         # Hyperparameters (model, training, data)

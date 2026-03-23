@@ -200,7 +200,7 @@ This template comes with a ready-to-use example: **MNIST training with PyTorch**
 📦 **Repository:** [sleep3r/polyaxon-vastai-example](https://github.com/sleep3r/polyaxon-vastai-example)
 
 ```
-├── mnist_train.py              # Training with full Polyaxon tracking
+├── train.py              # Training with full Polyaxon tracking
 ├── configs/
 │   └── experiment.yaml         # Hyperparameters (model, training, data)
 ├── infra/

@@ -38,7 +38,7 @@ run:
     args:
       - >
         pip install -q pyyaml polyaxon &&
-        python -u mnist_train.py
+        python -u train.py
         --epochs={{ epochs }}
         --lr={{ lr }}
         --batch_size={{ batch_size }}
