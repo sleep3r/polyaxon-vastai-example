@@ -50,6 +50,8 @@ make run                    # Train (5 epochs, default config)
 make run-fast               # Quick test (2 epochs)
 make run-full               # Full training (15 epochs, lower lr)
 make sweep                  # Hyperparameter search (12 random runs)
+make pipeline               # DAG: prepare → train → evaluate
+make schedule               # Nightly cron retraining
 make logs                   # Stream logs
 ```
 
@@ -73,7 +75,9 @@ make notebook               # GPU-enabled Jupyter in Polyaxon
 │   ├── setup.sh                # Vast.ai on-start: k3s + Polyaxon + GPU
 │   ├── polyaxonfile.yaml       # Job definition (image, GPU, inputs)
 │   ├── notebook.yaml           # Jupyter notebook service
-│   └── sweep.yaml              # Hyperparameter sweep (random search)
+│   ├── sweep.yaml              # Hyperparameter sweep (random search)
+│   ├── dag.yaml                # Pipeline: prepare → train → evaluate
+│   └── schedule.yaml           # Nightly cron retraining
 │
 ├── Makefile                    # CLI shortcuts
 ├── .env.example                # Environment template
@@ -127,6 +131,32 @@ make sweep                  # 12 experiments, 2 concurrent
 
 Results are tracked in Polyaxon UI — compare metric curves side-by-side and pick the best config. Concurrency is set to 2 to avoid GPU memory contention on a single card.
 
+## Pipeline (DAG)
+
+Run a multi-step pipeline with dependencies:
+
+```bash
+make pipeline               # prepare-data → train → evaluate
+```
+
+```text
+prepare-data ──→ train ──→ evaluate
+ (download)     (GPU)     (load checkpoint,
+                           print results)
+```
+
+Each step runs as a separate Kubernetes job. `train` only starts after `prepare-data` completes, `evaluate` waits for `train`. Hyperparameters are passed through the entire chain.
+
+## Schedule
+
+Set up automatic nightly retraining:
+
+```bash
+make schedule               # Cron: every day at 02:00 UTC
+```
+
+The schedule creates a persistent operation that triggers a new training run every night. Cache is disabled so each tick runs fresh. To stop the schedule, delete the operation from the Polyaxon UI or CLI.
+
 ## Architecture
 
 ```text
@@ -163,6 +193,8 @@ Local Machine                    Vast.ai KVM Instance
 | `make run-fast` | Quick test run (2 epochs) |
 | `make run-full` | Full training (15 epochs, lr=0.0005) |
 | `make sweep` | Hyperparameter search (12 random runs) |
+| `make pipeline` | DAG: prepare → train → evaluate |
+| `make schedule` | Nightly cron retraining |
 | `make notebook` | Start Jupyter notebook with GPU |
 | `make logs` | Stream run logs |
 | `make status` | List runs |

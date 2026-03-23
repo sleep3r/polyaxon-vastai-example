@@ -1,0 +1,56 @@
+version: 1.1
+kind: operation
+name: mnist-nightly
+
+# Run every day at 02:00 UTC
+schedule:
+  kind: cron
+  cron: "0 2 * * *"
+
+# Disable cache so each scheduled run actually executes
+cache:
+  disable: true
+
+component:
+  name: mnist-scheduled-training
+  tags: [mnist, pytorch, gpu, scheduled]
+  inputs:
+    - name: epochs
+      type: int
+      isOptional: true
+      value: 5
+    - name: lr
+      type: float
+      isOptional: true
+      value: 0.001
+    - name: batch_size
+      type: int
+      isOptional: true
+      value: 64
+    - name: hidden_size
+      type: int
+      isOptional: true
+      value: 128
+    - name: dropout
+      type: float
+      isOptional: true
+      value: 0.2
+  run:
+    kind: job
+    connections: [default-artifacts-store]
+    container:
+      image: pytorch/pytorch:latest
+      resources:
+        limits:
+          nvidia.com/gpu: 1
+      workingDir: "/artifacts/{{ globals.uuid }}/uploads"
+      command: ["bash", "-c"]
+      args:
+        - >
+          pip install -q pyyaml polyaxon &&
+          python -u train.py
+          --epochs={{ epochs }}
+          --lr={{ lr }}
+          --batch_size={{ batch_size }}
+          --hidden_size={{ hidden_size }}
+          --dropout={{ dropout }}

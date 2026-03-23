@@ -1,0 +1,127 @@
+version: 1.1
+kind: component
+name: mnist-pipeline
+tags: [mnist, pytorch, gpu, dag]
+
+inputs:
+  - name: epochs
+    type: int
+    isOptional: true
+    value: 5
+  - name: lr
+    type: float
+    isOptional: true
+    value: 0.001
+  - name: batch_size
+    type: int
+    isOptional: true
+    value: 64
+  - name: hidden_size
+    type: int
+    isOptional: true
+    value: 128
+  - name: dropout
+    type: float
+    isOptional: true
+    value: 0.2
+
+run:
+  kind: dag
+  operations:
+    # Step 1: Download and prepare MNIST data
+    - name: prepare-data
+      component:
+        name: prepare-data
+        run:
+          kind: job
+          connections: [default-artifacts-store]
+          container:
+            image: pytorch/pytorch:latest
+            workingDir: "/artifacts"
+            command: ["python", "-c"]
+            args:
+              - |
+                from torchvision import datasets
+                print("📥 Downloading MNIST...")
+                datasets.MNIST('/artifacts/data', train=True, download=True)
+                datasets.MNIST('/artifacts/data', train=False, download=True)
+                print("✅ MNIST data ready at /artifacts/data")
+
+    # Step 2: Train model (depends on data)
+    - name: train
+      dependencies: [prepare-data]
+      component:
+        name: train
+        inputs:
+          - name: epochs
+            type: int
+          - name: lr
+            type: float
+          - name: batch_size
+            type: int
+          - name: hidden_size
+            type: int
+          - name: dropout
+            type: float
+        run:
+          kind: job
+          connections: [default-artifacts-store]
+          container:
+            image: pytorch/pytorch:latest
+            resources:
+              limits:
+                nvidia.com/gpu: 1
+            workingDir: "/artifacts/{{ globals.uuid }}/uploads"
+            command: ["bash", "-c"]
+            args:
+              - >
+                pip install -q pyyaml polyaxon &&
+                python -u train.py
+                --epochs={{ epochs }}
+                --lr={{ lr }}
+                --batch_size={{ batch_size }}
+                --hidden_size={{ hidden_size }}
+                --dropout={{ dropout }}
+      params:
+        epochs:
+          value: "{{ epochs }}"
+        lr:
+          value: "{{ lr }}"
+        batch_size:
+          value: "{{ batch_size }}"
+        hidden_size:
+          value: "{{ hidden_size }}"
+        dropout:
+          value: "{{ dropout }}"
+
+    # Step 3: Evaluate (depends on training)
+    - name: evaluate
+      dependencies: [train]
+      component:
+        name: evaluate
+        run:
+          kind: job
+          connections: [default-artifacts-store]
+          container:
+            image: pytorch/pytorch:latest
+            resources:
+              limits:
+                nvidia.com/gpu: 1
+            workingDir: "/artifacts"
+            command: ["python", "-c"]
+            args:
+              - |
+                import torch, glob, json
+                # Find latest model
+                models = sorted(glob.glob('/artifacts/*/uploads/model/mnist_best.pt'))
+                if not models:
+                    print("❌ No model found"); exit(1)
+                ckpt = torch.load(models[-1], weights_only=False, map_location='cpu')
+                acc = ckpt.get('accuracy', 'N/A')
+                epoch = ckpt.get('epoch', 'N/A')
+                config = ckpt.get('config', {})
+                print(f"📊 Best model evaluation:")
+                print(f"   Accuracy: {acc}")
+                print(f"   Epoch:    {epoch}")
+                print(f"   Config:   {json.dumps(config, indent=2)}")
+                print("✅ Pipeline complete!")
