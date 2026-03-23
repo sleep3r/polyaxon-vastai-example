@@ -18,7 +18,7 @@ matrix:
       kind: choice
       value: [32, 64, 128]
   earlyStopping:
-    - kind: metric
+    - kind: metric_early_stopping
       metric: val_accuracy
       value: 0.99
       optimization: maximize
