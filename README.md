@@ -66,12 +66,12 @@ make notebook               # GPU-enabled Jupyter in Polyaxon
 ├── mnist_train.py              # Training script with Polyaxon tracking
 │
 ├── configs/
-│   ├── experiment.yaml         # Hyperparameters (model, training, data)
-│   ├── polyaxonfile.yaml       # Job definition (image, GPU, inputs)
-│   └── notebook.yaml           # Jupyter notebook service
+│   └── experiment.yaml         # Hyperparameters (model, training, data)
 │
 ├── infra/
-│   └── setup.sh                # Vast.ai on-start: k3s + Polyaxon + GPU
+│   ├── setup.sh                # Vast.ai on-start: k3s + Polyaxon + GPU
+│   ├── polyaxonfile.yaml       # Job definition (image, GPU, inputs)
+│   └── notebook.yaml           # Jupyter notebook service
 │
 ├── Makefile                    # CLI shortcuts
 ├── .env.example                # Environment template
@@ -104,7 +104,7 @@ Examples:
 make run                                    # Use experiment.yaml defaults
 make run-fast                               # Override: epochs=2
 make run-full                               # Override: epochs=15, lr=0.0005
-uv run polyaxon run -f configs/polyaxonfile.yaml -u -P epochs=10 -P lr=0.0003 -P hidden_size=256
+uv run polyaxon run -f infra/polyaxonfile.yaml -u -P epochs=10 -P lr=0.0003 -P hidden_size=256
 ```
 
 ## Architecture

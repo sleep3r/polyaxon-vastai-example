@@ -27,13 +27,13 @@ init:
 	uv run polyaxon project create --name $(PROJECT)
 
 run:
-	uv run polyaxon run -f configs/polyaxonfile.yaml -u -p $(PROJECT)
+	uv run polyaxon run -f infra/polyaxonfile.yaml -u -p $(PROJECT)
 
 run-fast:
-	uv run polyaxon run -f configs/polyaxonfile.yaml -u -p $(PROJECT) -P epochs=2
+	uv run polyaxon run -f infra/polyaxonfile.yaml -u -p $(PROJECT) -P epochs=2
 
 run-full:
-	uv run polyaxon run -f configs/polyaxonfile.yaml -u -p $(PROJECT) -P epochs=15 -P lr=0.0005
+	uv run polyaxon run -f infra/polyaxonfile.yaml -u -p $(PROJECT) -P epochs=15 -P lr=0.0005
 
 logs:
 	uv run polyaxon ops logs -p $(PROJECT)
@@ -45,4 +45,4 @@ dashboard:
 	@open "$(POLYAXON_HOST)" 2>/dev/null || echo "Открой: $(POLYAXON_HOST)"
 
 notebook:
-	uv run polyaxon run -f configs/notebook.yaml -p $(PROJECT)
+	uv run polyaxon run -f infra/notebook.yaml -p $(PROJECT)
